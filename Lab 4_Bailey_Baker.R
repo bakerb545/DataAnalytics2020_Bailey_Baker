@@ -33,30 +33,41 @@ plot(rowMeans(data_Matrix_Ordered), 40:1, , xlab="The Row Mean",
 plot(colMeans(data_Matrix_Ordered), xlab="Column", ylab = "Column Mean", pch=19)
 
 ###Titanic Data
-data(Titanic)
-
+data("Titanic")
+#titanicdf<- Titanic
 #rpart
 require(rpart)
-titanic_rpart<- rpart(Survived ~., data=Titanic)
+require(C50)
+require(titanic)
+lis<- c("Ticket", "Cabin", "Name", "PassengerId", "Sex", "Embarked")
+titanicdf<- titanic_train[,!(names(titanic_train) %in% lis)]
+titanic_rpart<- rpart(Survived ~., data=titanicdf)
+titanic_rpart
 plot(titanic_rpart)
 summary(titanic_rpart)
 printcp(titanic_rpart)
 plotcp(titanic_rpart)
 
 #ctree
-
-
-
-
+require(party)
+titanic_ctree <- ctree(Survived~., data=titanicdf)
+titanic_ctree
+plot(titanic_ctree)
 
 #hclust
-
+tmat<- as.matrix(titanicdf)
+for (i in 1:ncol(tmat)){
+  tmat[,i]<- as.numeric(tmat[,i])
+}
+clusttitanic<- hclust(dist(tmat))
+data_Matrix_titanic <- tmat[clusttitanic$order,]
+par(mfrow = c(1,3))
+image(t(data_Matrix_titanic)[,nrow(data_Matrix_titanic):1])
 
 #randomForest
-
-
-
-
+library("randomForest")
+rand_titanic<- randomForest(Survived~., data=titanicdf, na.action = na.omit)
+print(rand_titanic)
 
 
 
