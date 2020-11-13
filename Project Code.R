@@ -184,8 +184,13 @@ summstats<- rbind(summstats, stats)
 summstats
 
 par(mar= c(4,15,1,1),las=1, cex.axis = .5)
-barplot(varImpPlot(rand_train)[,"MeanDecreaseGini"], horiz=TRUE, main="Random Forest Importance")
+vargini<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseGini"]
+dat<- vargini[order(vargini, decreasing=FALSE)]
+barplot(dat, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Gini", col=blues9)
 
+varacc<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseAccuracy"]
+dat1<- varacc[order(varacc, decreasing=FALSE)]
+barplot(dat1, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Accuracy", col=blues9)
 
 #decision trees (regression)
 train_u5<- cbind(train, u5_train)
