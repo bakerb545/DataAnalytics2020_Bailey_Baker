@@ -83,7 +83,7 @@ train<- train[,-which(names(train) %in% drop)]
 mort<- mort[,-which(names(mort) %in% drop)]
 
 #decision trees (classification) - rpart
-mo<- rpart(train$ABOVE25_MORT ~., data=train, method="class")
+mo<- rpart(train$ABOVE25_MORT ~., data=train, method="class",control = list(minsplit=20))
 mo
 rpart.plot(mo)
 
@@ -114,7 +114,7 @@ rpart.plot(tree_prune)
 
 dcpredict<- predict(tree_prune, newdata = mort, type=c("class"))
 dctab<- table(dcpredict, mort[, "ABOVE25_MORT"])
-#confusion matrix
+
 tp = dctab[4]
 fn = dctab[3]
 fp = dctab[2]
@@ -132,11 +132,11 @@ names(stats)<- name
 summstats<- rbind(summstats, stats)
 
 #stopping criteria
-mo<- rpart(train$ABOVE25_MORT ~., data=train, method="class", control = list(minsplit=5))
-mo
-rpart.plot(mo)
+mo_stop<- rpart(train$ABOVE25_MORT ~., data=train, method="class", control = rpart.control(minsplit=5))
+mo_stop
+rpart.plot(mo_stop)
 
-dcpredict<- predict(mo, newdata = mort, type=c("class"))
+dcpredict<- predict(mo_stop, newdata = mort, type=c("class"))
 dctab<- table(dcpredict, mort[, "ABOVE25_MORT"])
 
 tp = dctab[4]
@@ -154,6 +154,10 @@ stats<- as.data.frame(matrix(c("Decision Tree (Minsplit = 5)", recall_rate, prec
 
 names(stats)<- name
 summstats<- rbind(summstats, stats)
+
+summstats
+
+
 #random forest
 require(randomForest)
 train$ABOVE25_MORT<- as.factor(train$ABOVE25_MORT)
@@ -192,6 +196,7 @@ varacc<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseAccuracy"]
 dat1<- varacc[order(varacc, decreasing=FALSE)]
 barplot(dat1, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Accuracy", col=blues9)
 
+par()
 #decision trees (regression)
 train_u5<- cbind(train, u5_train)
 mort_u5<- cbind(mort, u5_mort)
@@ -355,10 +360,10 @@ summary(mort_clust2$IMPROVED_DRINK_PREMISES)
 
 
 #other models
-mo1<- rpart(low_mort$UNDER5_MORT ~., data=low_mort)
-mo1
-rpart.plot(mo1)
+#mo1<- rpart(low_mort$UNDER5_MORT ~., data=low_mort)
+#mo1
+#rpart.plot(mo1)
 
-mo2<- rpart(high_mort$UNDER5_MORT ~., data=high_mort)
-mo2
-rpart.plot(mo2)
+#mo2<- rpart(high_mort$UNDER5_MORT ~., data=high_mort)
+#mo2
+#rpart.plot(mo2)
