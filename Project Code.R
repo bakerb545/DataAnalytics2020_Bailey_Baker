@@ -13,7 +13,9 @@ for (i in 3:ncol(mort)-1){
 summary(mort)
 track<- data.frame("Name" = NA, "NAs" = NA)
 mort[, "POVERTY"]<- sub("-", NA, mort[,"POVERTY"])
+mort<- mort[is.na(mort$UNDER5_MORT) == FALSE,]
 
+mort<- mort[, which(colMeans(!is.na(mort)) > 0.5)]
 for (i in 1:ncol(mort)){
   track1<- data.frame("Name" = names(mort)[i], 
                       "NAs" =sum(!complete.cases(mort[,i])))
@@ -21,32 +23,40 @@ for (i in 1:ncol(mort)){
 
 }
 track
-mort<- mort[is.na(mort$UNDER5_MORT) == FALSE,]
+track<- track[complete.cases(track),]
+track["Percent"]<- track[, "NAs"]/nrow(mort)
+track<- track[order(track$Percent, decreasing=TRUE),]
+
+
+
 
 mort_rate<- mort[,'UNDER5_MORT']
 hist(mort_rate)
-unimprov_water<- mort[,'UNIMPROVED_DRINK']
+#unimprov_water<- mort[,'UNIMPROVED_DRINK']
 print(mean(mort_rate))
 mort[, 'ABOVE25_MORT']<- 0
 mort[which(mort$UNDER5_MORT>= 25), 'ABOVE25_MORT'] <- 1
 
-boxplot(unimprov_water)
-qqnorm(unimprov_water)
+#boxplot(unimprov_water)
+#qqnorm(unimprov_water)
 summary(mort_rate)
 lis<- list("Indicator", "INF_MORT", "CHILD_MORT14", "UNDER5_DEATHS", "CHILD_DEATHS14", "POVERTY", "NO_WASTE_OVERWEIGHT_STUNT", "WASTE_OVERWEIGHT_STUNT")
 mort<- mort[,-which(names(mort) %in% lis)]
-high_mort<- mort[(mort$UNDER5_MORT >= mean(mort_rate, na.rm=TRUE)),]
-low_mort<- mort[(mort$UNDER5_MORT < mean(mort_rate, na.rm=TRUE)),]
-summary(high_mort$UNDER5_MORT)
-hist(high_mort$UNDER5_MORT)
-summary(low_mort$UNDER5_MORT)
-hist(low_mort$UNDER5_MORT)
+print(mean(mort$IMPROVED_DRINK_PREMISES, na.rm=T))
+mort<- na.aggregate(mort)
+print(mean(mort$IMPROVED_DRINK_PREMISES, na.rm=T))
+#high_mort<- mort[(mort$UNDER5_MORT >= mean(mort_rate, na.rm=TRUE)),]
+#low_mort<- mort[(mort$UNDER5_MORT < mean(mort_rate, na.rm=TRUE)),]
+#summary(high_mort$UNDER5_MORT)
+#hist(high_mort$UNDER5_MORT)
+#summary(low_mort$UNDER5_MORT)
+#hist(low_mort$UNDER5_MORT)
 
-unimprov_water_low<- low_mort$UNIMPROVED_DRINK
-unimprov_water_high<- high_mort$UNIMPROVED_DRINK
+#unimprov_water_low<- low_mort$UNIMPROVED_DRINK
+#unimprov_water_high<- high_mort$UNIMPROVED_DRINK
 
-summary(unimprov_water_high)
-summary(unimprov_water_low)
+#summary(unimprov_water_high)
+#summary(unimprov_water_low)
 
 #import of training data
 t2016<- data.frame(read_xlsx("C:/Users/phoen/Downloads/GLOBAL_DATAFLOW_2011-2016.xlsx", sheet=1))
@@ -65,6 +75,8 @@ for (i in 1:ncol(train)){
 }
 train<- train[is.na(train$UNDER5_MORT) == FALSE,]
 train<- train[,-which(names(train) %in% lis)]
+train<- train[,which(names(train) %in% names(mort))]
+
 train[, 'ABOVE25_MORT']<- 0
 train[which(train$UNDER5_MORT>= 25), 'ABOVE25_MORT'] <- 1
 
@@ -188,15 +200,25 @@ summstats<- rbind(summstats, stats)
 summstats
 
 par(mar= c(4,15,1,1),las=1, cex.axis = .5)
+
 vargini<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseGini"]
 dat<- vargini[order(vargini, decreasing=FALSE)]
 barplot(dat, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Gini", col=blues9)
+
+#reduce dataframe
+vargini1<- as.data.frame(varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseGini"])
+n<- as.data.frame(row.names(vargini1))
+vargini1<- cbind(n, vargini1)
+new_name<- c("Var", "MeanDecreaseGini")
+names(vargini1)<- new_name
+row.names(vargini1) = NULL
+dat_new<- vargini1[order(vargini1$MeanDecreaseGini, decreasing=FALSE),]
+
 
 varacc<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseAccuracy"]
 dat1<- varacc[order(varacc, decreasing=FALSE)]
 barplot(dat1, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Accuracy", col=blues9)
 
-par()
 #decision trees (regression)
 train_u5<- cbind(train, u5_train)
 mort_u5<- cbind(mort, u5_mort)
@@ -225,6 +247,10 @@ mse_reg
 #knn classification
 library(class)
 
+knnstats<- as.data.frame(matrix(c(NA), ncol=5))
+name<- c("Model", "Recall", "Precision", "Accuracy", "Misclassification")
+names(knnstats)<- name
+
 for (i in 1:10){
   knnmodel<- knn(train[,-which(names(train) %in% drop2)], mort[,-which(names(mort) %in% drop2)], train$ABOVE25_MORT, k=i)
   attributes(knnmodel)
@@ -248,9 +274,12 @@ for (i in 1:10){
                                  accuracy_rate, misclassification_rate), ncol=5))
   
   names(stats)<- name
-  summstats<- rbind(summstats, stats)
+  knnstats<- rbind(knnstats, stats)
 }
-summstats
+
+max_acc_knn<- knnstats[order(knnstats$Accuracy, decreasing=T),]
+summstats<- rbind(summstats, max_acc_knn[1,])
+
 
 #clustering
 library(stats)
@@ -357,7 +386,7 @@ hist(mort_clust2$IMPROVED_DRINK_PREMISES)
 summary(mort_clust2$IMPROVED_DRINK_PREMISES)
 
 #
-
+summstats
 
 #other models
 #mo1<- rpart(low_mort$UNDER5_MORT ~., data=low_mort)
