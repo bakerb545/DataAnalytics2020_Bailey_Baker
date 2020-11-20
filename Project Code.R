@@ -1,8 +1,26 @@
 rm(list=ls())
 
+set.seed(1)
 library(readxl)
 library(rpart)
 library(rpart.plot)
+library(zoo)
+library(tree)
+
+confmat<- function(table){
+  tp = table[4]
+  fn = table[3]
+  fp = table[2]
+  tn = table[1]
+  total_recs<- sum(tp, tn, fn, fp)
+  recall_rate<- round(tp/(tp+fn),5)
+  precision_rate<- round(tp/(tp+fp),5)
+  accuracy_rate<- round((tp+tn)/total_recs,5)
+  misclassification_rate<- round((fp+fn)/total_recs,5)
+  lis<- c(recall_rate, precision_rate, accuracy_rate, misclassification_rate)
+  return(lis)
+}
+
 
 mort<- data.frame(read_xlsx("C:/Users/phoen/Downloads/2017 Under-Five Mortality.xlsx"))
 #View(mort)
@@ -22,13 +40,12 @@ for (i in 1:ncol(mort)){
   track<- rbind(track, track1)
 
 }
-track
+
 track<- track[complete.cases(track),]
+track
 track["Percent"]<- track[, "NAs"]/nrow(mort)
 track<- track[order(track$Percent, decreasing=TRUE),]
-
-
-
+track
 
 mort_rate<- mort[,'UNDER5_MORT']
 hist(mort_rate)
@@ -95,74 +112,62 @@ train<- train[,-which(names(train) %in% drop)]
 mort<- mort[,-which(names(mort) %in% drop)]
 
 #decision trees (classification) - rpart
-mo<- rpart(train$ABOVE25_MORT ~., data=train, method="class",control = list(minsplit=20))
+#mo<- rpart(train$ABOVE25_MORT ~., data=train, method="class",control = list(minsplit=20))
+mo<- tree(as.factor(ABOVE25_MORT) ~., data=train, split=c("gini"))
 mo
-rpart.plot(mo)
 
-dcpredict<- predict(mo, newdata = mort, type=c("class"))
+#deviance is a bit better than gini - why is that?
+dev.off()
+#par(mar=c(1,1,1,1))
+#rpart.plot(mo)
+plot(mo)
+text(mo, pretty=0)
+
+dcpredict<- predict(mo, newdata = mort, type="class")
 dctab<- table(dcpredict, mort[, "ABOVE25_MORT"])
-#confusion matrix
-tp = dctab[4]
-fn = dctab[3]
-fp = dctab[2]
-tn = dctab[1]
-total_recs<- sum(tp, tn, fn, fp)
-recall_rate<- round(tp/(tp+fn),5)
-precision_rate<- round(tp/(tp+fp),5)
-accuracy_rate<- round((tp+tn)/total_recs,5)
-misclassification_rate<- round((fp+fn)/total_recs,5)
 
-stats<- as.data.frame(matrix(c("Decision Tree", recall_rate, precision_rate, 
-                               accuracy_rate, misclassification_rate), ncol=5))
+mat<- confmat(dctab)
+stats<- as.data.frame(matrix(c("Decision Tree", mat[1], mat[2], 
+                               mat[3], mat[4]), ncol=5))
 
 names(stats)<- name
 summstats<- rbind(summstats, stats)
 summstats<- summstats[complete.cases(summstats),]
 
 #pruning
-tree_prune<- prune(mo, cp = .02)
-tree_prune
-rpart.plot(tree_prune)
+#tree_prune<- prune(mo, cp = .02)
+cv_prune<-cv.tree(mo, FUN = prune.misclass)
+cv_prune
+tree_prune<- prune.misclass(mo, best=20)
+#rpart.plot(tree_prune)
+plot(tree_prune)
+text(tree_prune, pretty=0)
 
 dcpredict<- predict(tree_prune, newdata = mort, type=c("class"))
 dctab<- table(dcpredict, mort[, "ABOVE25_MORT"])
 
-tp = dctab[4]
-fn = dctab[3]
-fp = dctab[2]
-tn = dctab[1]
-total_recs<- sum(tp, tn, fn, fp)
-recall_rate<- round(tp/(tp+fn),5)
-precision_rate<- round(tp/(tp+fp),5)
-accuracy_rate<- round((tp+tn)/total_recs,5)
-misclassification_rate<- round((fp+fn)/total_recs,5)
-
-stats<- as.data.frame(matrix(c("Decision Tree (Pruned, cp=.02)", recall_rate, precision_rate, 
-                               accuracy_rate, misclassification_rate), ncol=5))
+mat<- confmat(dctab)
+#stats<- as.data.frame(matrix(c("Decision Tree (Pruned, cp=.02)",  mat[1], mat[2], 
+                           #    mat[3], mat[4]), ncol=5))
+stats<- as.data.frame(matrix(c("Decision Tree (Pruned, terminal nodes = )",  mat[1], mat[2], 
+    mat[3], mat[4]), ncol=5))
 
 names(stats)<- name
 summstats<- rbind(summstats, stats)
 
 #stopping criteria
-mo_stop<- rpart(train$ABOVE25_MORT ~., data=train, method="class", control = rpart.control(minsplit=5))
+#mo_stop<- rpart(train$ABOVE25_MORT ~., data=train, method="class", control = rpart.control(minsplit=5))
+mo_stop<- tree(as.factor(ABOVE25_MORT) ~., data=train, split=c("gini"), control = tree.control(nrow(train), minsize= 20))
 mo_stop
-rpart.plot(mo_stop)
+#rpart.plot(mo_stop)
+plot(mo_stop)
 
 dcpredict<- predict(mo_stop, newdata = mort, type=c("class"))
 dctab<- table(dcpredict, mort[, "ABOVE25_MORT"])
 
-tp = dctab[4]
-fn = dctab[3]
-fp = dctab[2]
-tn = dctab[1]
-total_recs<- sum(tp, tn, fn, fp)
-recall_rate<- round(tp/(tp+fn),5)
-precision_rate<- round(tp/(tp+fp),5)
-accuracy_rate<- round((tp+tn)/total_recs,5)
-misclassification_rate<- round((fp+fn)/total_recs,5)
-
-stats<- as.data.frame(matrix(c("Decision Tree (Minsplit = 5)", recall_rate, precision_rate, 
-                               accuracy_rate, misclassification_rate), ncol=5))
+mat<- confmat(dctab)
+stats<- as.data.frame(matrix(c("Decision Tree (Minsplit = 20)",  mat[1], mat[2], 
+                               mat[3], mat[4]), ncol=5))
 
 names(stats)<- name
 summstats<- rbind(summstats, stats)
@@ -182,18 +187,10 @@ print(rand_train)
 predTrain<- predict(rand_train, mort, type="class")
 randtab<- table(predTrain, mort$ABOVE25_MORT)
 
-tp = randtab[4]
-fn = randtab[3]
-fp = randtab[2]
-tn = randtab[1]
-total_recs<- sum(tp, tn, fn, fp)
-recall_rate<- round(tp/(tp+fn),5)
-precision_rate<- round(tp/(tp+fp),5)
-accuracy_rate<- round((tp+tn)/total_recs,5)
-misclassification_rate<- round((fp+fn)/total_recs,5)
+mat<- confmat(randtab)
 
-stats<- as.data.frame(matrix(c("Random Forest(ntree=500)", recall_rate, precision_rate, 
-                               accuracy_rate, misclassification_rate), ncol=5))
+stats<- as.data.frame(matrix(c("Random Forest(ntree=500)",  mat[1], mat[2], 
+                               mat[3], mat[4]), ncol=5))
 
 names(stats)<- name
 summstats<- rbind(summstats, stats)
@@ -212,12 +209,24 @@ vargini1<- cbind(n, vargini1)
 new_name<- c("Var", "MeanDecreaseGini")
 names(vargini1)<- new_name
 row.names(vargini1) = NULL
-dat_new<- vargini1[order(vargini1$MeanDecreaseGini, decreasing=FALSE),]
+dat_new<- vargini1[order(vargini1$MeanDecreaseGini, decreasing = T),]
 
-
+gini_vars<- list(dat_new$Var[1:5])
+#Mean Decrease Accuracy
 varacc<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseAccuracy"]
 dat1<- varacc[order(varacc, decreasing=FALSE)]
 barplot(dat1, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Accuracy", col=blues9)
+
+varacc1<- as.data.frame(varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseAccuracy"])
+n<- as.data.frame(row.names(varacc1))
+varacc1<- cbind(n, varacc1)
+new_name<- c("Var", "MeanDecreaseAccuracy")
+names(varacc1)<- new_name
+row.names(varacc1) = NULL
+dat_new1<- varacc1[order(varacc1$MeanDecreaseAccuracy,decreasing = T),]
+
+acc_vars<- list(dat_new1$Var[1:5])
+
 
 #decision trees (regression)
 train_u5<- cbind(train, u5_train)
@@ -244,6 +253,7 @@ dcpredict_prune<- predict(tree_prune, newdata = mort_u5)
 mse_reg<- sum( (dcpredict_prune - mort_u5$UNDER5_MORT) ^ 2)
 mse_reg
 
+dev.off()
 #knn classification
 library(class)
 
@@ -253,25 +263,15 @@ names(knnstats)<- name
 
 for (i in 1:10){
   knnmodel<- knn(train[,-which(names(train) %in% drop2)], mort[,-which(names(mort) %in% drop2)], train$ABOVE25_MORT, k=i)
-  attributes(knnmodel)
   
   knntab <- table(knnmodel,mort$ABOVE25_MORT)
-  knntab
   
-  tp = knntab[4]
-  fn = knntab[3]
-  fp = knntab[2]
-  tn = knntab[1]
-  total_recs<- sum(tp, tn, fn, fp)
-  recall_rate<- round(tp/(tp+fn),5)
-  precision_rate<- round(tp/(tp+fp),5)
-  accuracy_rate<- round((tp+tn)/total_recs,5)
-  misclassification_rate<- round((fp+fn)/total_recs,5)
   #print(str(i))
+  mat<- confmat(knntab)
   knntype<- paste("KNN (", i, ")", sep="", collapse=NULL)
   
-  stats<- as.data.frame(matrix(c(knntype, recall_rate, precision_rate, 
-                                 accuracy_rate, misclassification_rate), ncol=5))
+  stats<- as.data.frame(matrix(c(knntype, mat[1], mat[2], 
+                                 mat[3], mat[4]), ncol=5))
   
   names(stats)<- name
   knnstats<- rbind(knnstats, stats)
@@ -372,14 +372,29 @@ mort_clust1 <- mort_u5[mort_u5$Cluster == 1,]
 mort_clust2 <- mort_u5[mort_u5$Cluster == 2,]
 
 hist(train_clust1$UNDER5_MORT)
+summary(train_clust1$UNDER5_MORT)
 hist(train_clust2$UNDER5_MORT)
+summary(train_clust2$UNDER5_MORT)
 hist(mort_clust1$UNDER5_MORT)
+summary(mort_clust1$UNDER5_MORT)
 hist(mort_clust2$UNDER5_MORT)
+summary(mort_clust2$UNDER5_MORT)
 
 hist(train_clust1$AT_LEAST_BASIC_SANIT)
 summary(train_clust1$AT_LEAST_BASIC_SANIT)
 hist(train_clust2$AT_LEAST_BASIC_SANIT)
 summary(train_clust2$AT_LEAST_BASIC_SANIT)
+
+hist(train_clust1$IMPROVED_DRINK_PREMISES)
+summary(train_clust1$IMPROVED_DRINK_PREMISES)
+hist(train_clust2$IMPROVED_DRINK_PREMISES)
+summary(train_clust2$IMPROVED_DRINK_PREMISES)
+
+hist(mort_clust1$AT_LEAST_BASIC_SANIT)
+summary(mort_clust1$AT_LEAST_BASIC_SANIT)
+hist(mort_clust2$AT_LEAST_BASIC_SANIT)
+summary(mort_clust2$AT_LEAST_BASIC_SANIT)
+
 hist(mort_clust1$IMPROVED_DRINK_PREMISES)
 summary(mort_clust1$IMPROVED_DRINK_PREMISES)
 hist(mort_clust2$IMPROVED_DRINK_PREMISES)
@@ -388,11 +403,3 @@ summary(mort_clust2$IMPROVED_DRINK_PREMISES)
 #
 summstats
 
-#other models
-#mo1<- rpart(low_mort$UNDER5_MORT ~., data=low_mort)
-#mo1
-#rpart.plot(mo1)
-
-#mo2<- rpart(high_mort$UNDER5_MORT ~., data=high_mort)
-#mo2
-#rpart.plot(mo2)
