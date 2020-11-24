@@ -157,7 +157,7 @@ summstats<- rbind(summstats, stats)
 
 #stopping criteria
 #mo_stop<- rpart(train$ABOVE25_MORT ~., data=train, method="class", control = rpart.control(minsplit=5))
-mo_stop<- tree(as.factor(ABOVE25_MORT) ~., data=train, split=c("gini"), control = tree.control(nrow(train), minsize= 20))
+mo_stop<- tree(as.factor(ABOVE25_MORT) ~., data=train, split=c("gini"), control = tree.control(nrow(train), mincut= 5))
 mo_stop
 #rpart.plot(mo_stop)
 plot(mo_stop)
@@ -195,7 +195,7 @@ stats<- as.data.frame(matrix(c("Random Forest(ntree=500)",  mat[1], mat[2],
 names(stats)<- name
 summstats<- rbind(summstats, stats)
 summstats
-
+dev.off()
 par(mar= c(4,15,1,1),las=1, cex.axis = .5)
 
 vargini<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseGini"]
@@ -211,7 +211,7 @@ names(vargini1)<- new_name
 row.names(vargini1) = NULL
 dat_new<- vargini1[order(vargini1$MeanDecreaseGini, decreasing = T),]
 
-gini_vars<- list(dat_new$Var[1:5])
+gini_vars<- c(dat_new$Var[1:5])
 #Mean Decrease Accuracy
 varacc<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseAccuracy"]
 dat1<- varacc[order(varacc, decreasing=FALSE)]
@@ -225,8 +225,8 @@ names(varacc1)<- new_name
 row.names(varacc1) = NULL
 dat_new1<- varacc1[order(varacc1$MeanDecreaseAccuracy,decreasing = T),]
 
-acc_vars<- list(dat_new1$Var[1:5])
-
+acc_vars<- c(dat_new1$Var[1:5])
+#need to run models on these new dfs
 
 #decision trees (regression)
 train_u5<- cbind(train, u5_train)
@@ -402,4 +402,248 @@ summary(mort_clust2$IMPROVED_DRINK_PREMISES)
 
 #
 summstats
+
+
+######GINI INCREASE DATAFRAME
+
+##gini_vars
+
+#gini df
+gini_train<- train[,c(gini_vars, "ABOVE25_MORT")]
+gini_mort<- mort[, c(gini_vars, "ABOVE25_MORT")]
+
+ginistats<- as.data.frame(matrix(c(NA), ncol=5))
+name<- c("Model", "Recall", "Precision", "Accuracy", "Misclassification")
+names(ginistats)<- name
+#decision trees (classification) - rpart
+#mo<- rpart(train$ABOVE25_MORT ~., data=train, method="class",control = list(minsplit=20))
+mo<- tree(as.factor(ABOVE25_MORT) ~., data=gini_train, split=c("gini"))
+mo
+
+#deviance is a bit better than gini - why is that?
+dev.off()
+#par(mar=c(1,1,1,1))
+#rpart.plot(mo)
+plot(mo)
+text(mo, pretty=0)
+
+dcpredict<- predict(mo, newdata = gini_mort, type="class")
+dctab<- table(dcpredict, gini_mort[, "ABOVE25_MORT"])
+
+mat<- confmat(dctab)
+stats<- as.data.frame(matrix(c("Decision Tree", mat[1], mat[2], 
+                               mat[3], mat[4]), ncol=5))
+
+names(stats)<- name
+ginistats<- rbind(ginistats, stats)
+ginistats<- ginistats[complete.cases(ginistats),]
+
+#pruning
+#tree_prune<- prune(mo, cp = .02)
+cv_prune<-cv.tree(mo, FUN = prune.misclass)
+cv_prune
+tree_prune<- prune.misclass(mo, best=18)
+#rpart.plot(tree_prune)
+plot(tree_prune)
+text(tree_prune, pretty=0)
+
+dcpredict<- predict(tree_prune, newdata = gini_mort, type=c("class"))
+dctab<- table(dcpredict, gini_mort[, "ABOVE25_MORT"])
+
+mat<- confmat(dctab)
+#stats<- as.data.frame(matrix(c("Decision Tree (Pruned, cp=.02)",  mat[1], mat[2], 
+#    mat[3], mat[4]), ncol=5))
+stats<- as.data.frame(matrix(c("Decision Tree (Pruned, terminal nodes = 18)",  mat[1], mat[2], 
+                               mat[3], mat[4]), ncol=5))
+
+names(stats)<- name
+ginistats<- rbind(ginistats, stats)
+
+#stopping criteria
+#mo_stop<- rpart(train$ABOVE25_MORT ~., data=train, method="class", control = rpart.control(minsplit=5))
+mo_stop<- tree(as.factor(ABOVE25_MORT) ~., data=gini_train, split=c("gini"), control = tree.control(nrow(train), mincut= 5))
+mo_stop
+#rpart.plot(mo_stop)
+plot(mo_stop)
+
+dcpredict<- predict(mo_stop, newdata = gini_mort, type=c("class"))
+dctab<- table(dcpredict, mort[, "ABOVE25_MORT"])
+
+mat<- confmat(dctab)
+stats<- as.data.frame(matrix(c("Decision Tree (Minsplit = 20)",  mat[1], mat[2], 
+                               mat[3], mat[4]), ncol=5))
+
+names(stats)<- name
+ginistats<- rbind(ginistats, stats)
+
+ginistats
+
+
+#random forest
+require(randomForest)
+gini_train$ABOVE25_MORT<- as.factor(gini_train$ABOVE25_MORT)
+for (i in 1:ncol(gini_train)){
+  gini_train[is.na(gini_train[,i]),i] <- mean(gini_train[,i], na.rm=TRUE)
+  gini_mort[is.na(gini_mort[,i]),i] <- mean(gini_mort[,i], na.rm=TRUE)
+}
+rand_train<- randomForest(gini_train$ABOVE25_MORT ~., data=gini_train, na.action = na.omit, importance=TRUE)
+print(rand_train)
+predTrain<- predict(rand_train, gini_mort, type="class")
+randtab<- table(predTrain, gini_mort$ABOVE25_MORT)
+
+mat<- confmat(randtab)
+
+stats<- as.data.frame(matrix(c("Random Forest(ntree=500)",  mat[1], mat[2], 
+                               mat[3], mat[4]), ncol=5))
+
+names(stats)<- name
+ginistats<- rbind(ginistats, stats)
+ginistats
+
+par(mar= c(4,15,1,1),las=1, cex.axis = .5)
+
+vargini<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseGini"]
+dat<- vargini[order(vargini, decreasing=FALSE)]
+barplot(dat, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Gini", col=blues9)
+##other plots
+
+
+#knn
+
+knnstats<- as.data.frame(matrix(c(NA), ncol=5))
+name<- c("Model", "Recall", "Precision", "Accuracy", "Misclassification")
+names(knnstats)<- name
+
+for (i in 1:10){
+  knnmodel<- knn(gini_train[,-which(names(gini_train) %in% drop2)], gini_mort[,-which(names(gini_mort) %in% drop2)], gini_train$ABOVE25_MORT, k=i)
+  
+  knntab <- table(knnmodel,gini_mort$ABOVE25_MORT)
+  
+  #print(str(i))
+  mat<- confmat(knntab)
+  knntype<- paste("KNN (", i, ")", sep="", collapse=NULL)
+  
+  stats<- as.data.frame(matrix(c(knntype, mat[1], mat[2], 
+                                 mat[3], mat[4]), ncol=5))
+  
+  names(stats)<- name
+  knnstats<- rbind(knnstats, stats)
+}
+
+max_acc_knn<- knnstats[order(knnstats$Accuracy, decreasing=T),]
+ginistats<- rbind(ginistats, max_acc_knn[1,])
+ginistats
+
+
+###MEAN ACCRUACY DECREASE DATAFRAME
+
+
+##acc_vars
+acc_train<- train[,c(acc_vars, "ABOVE25_MORT")]
+
+summstats<- as.data.frame(matrix(c(NA), ncol=5))
+name<- c("Model", "Recall", "Precision", "Accuracy", "Misclassification")
+names(summstats)<- name
+
+#decision trees (classification) - rpart
+#mo<- rpart(train$ABOVE25_MORT ~., data=train, method="class",control = list(minsplit=20))
+mo<- tree(as.factor(ABOVE25_MORT) ~., data=acc_train, split=c("gini"))
+mo
+
+#deviance is a bit better than gini - why is that?
+dev.off()
+#par(mar=c(1,1,1,1))
+#rpart.plot(mo)
+plot(mo)
+text(mo, pretty=0)
+
+dcpredict<- predict(mo, newdata = mort, type="class")
+dctab<- table(dcpredict, mort[, "ABOVE25_MORT"])
+
+mat<- confmat(dctab)
+stats<- as.data.frame(matrix(c("Decision Tree", mat[1], mat[2], 
+                               mat[3], mat[4]), ncol=5))
+
+names(stats)<- name
+summstats<- rbind(summstats, stats)
+summstats<- summstats[complete.cases(summstats),]
+
+#pruning
+#tree_prune<- prune(mo, cp = .02)
+cv_prune<-cv.tree(mo, FUN = prune.misclass)
+cv_prune
+tree_prune<- prune.misclass(mo, best=20)
+#rpart.plot(tree_prune)
+plot(tree_prune)
+text(tree_prune, pretty=0)
+
+dcpredict<- predict(tree_prune, newdata = mort, type=c("class"))
+dctab<- table(dcpredict, mort[, "ABOVE25_MORT"])
+
+mat<- confmat(dctab)
+#stats<- as.data.frame(matrix(c("Decision Tree (Pruned, cp=.02)",  mat[1], mat[2], 
+#    mat[3], mat[4]), ncol=5))
+stats<- as.data.frame(matrix(c("Decision Tree (Pruned, terminal nodes = )",  mat[1], mat[2], 
+                               mat[3], mat[4]), ncol=5))
+
+names(stats)<- name
+summstats<- rbind(summstats, stats)
+
+#stopping criteria
+#mo_stop<- rpart(train$ABOVE25_MORT ~., data=train, method="class", control = rpart.control(minsplit=5))
+mo_stop<- tree(as.factor(ABOVE25_MORT) ~., data=acc_train, split=c("gini"), control = tree.control(nrow(train), mincut= 5))
+mo_stop
+#rpart.plot(mo_stop)
+plot(mo_stop)
+
+dcpredict<- predict(mo_stop, newdata = mort, type=c("class"))
+dctab<- table(dcpredict, mort[, "ABOVE25_MORT"])
+
+mat<- confmat(dctab)
+stats<- as.data.frame(matrix(c("Decision Tree (Minsplit = 20)",  mat[1], mat[2], 
+                               mat[3], mat[4]), ncol=5))
+
+names(stats)<- name
+summstats<- rbind(summstats, stats)
+
+summstats
+
+
+#random forest
+require(randomForest)
+train$ABOVE25_MORT<- as.factor(train$ABOVE25_MORT)
+for (i in 1:ncol(acc_train)){
+  acc_train[is.na(acc_train[,i]),i] <- mean(acc_train[,i], na.rm=TRUE)
+  mort[is.na(mort[,i]),i] <- mean(mort[,i], na.rm=TRUE)
+}
+rand_train<- randomForest(train$ABOVE25_MORT ~., data=acc_train, na.action = na.omit, importance=TRUE)
+print(rand_train)
+predTrain<- predict(rand_train, mort, type="class")
+randtab<- table(predTrain, mort$ABOVE25_MORT)
+
+mat<- confmat(randtab)
+
+stats<- as.data.frame(matrix(c("Random Forest(ntree=500)",  mat[1], mat[2], 
+                               mat[3], mat[4]), ncol=5))
+
+names(stats)<- name
+summstats<- rbind(summstats, stats)
+summstats
+
+par(mar= c(4,15,1,1),las=1, cex.axis = .5)
+
+vargini<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseGini"]
+dat<- vargini[order(vargini, decreasing=FALSE)]
+barplot(dat, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Gini", col=blues9)
+
+
+
+
+
+
+
+
+
+
+
 

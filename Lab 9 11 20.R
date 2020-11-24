@@ -224,4 +224,28 @@ gene<- ksvm(Class ~., data=promotergene,
             kernel=k, C=10, cross=5)
 gene
 
+x<- rbind(matrix(rnorm(120),,2), matrix(rnorm(120,
+                                              mean=3),,2))
+y<- matrix(c(rep(1,60), rep(-1,60)))
+svp<- ksvm(x,y,type="C-svc", kernel="rbfdot",
+           kpar = list(sigma=2))
+plot(svp)
+
+library(e1071)
+model<- svm(Species~., data=iris,
+            method="C-classification", kernel="radial",
+            cost=10, gamma=.1)
+summary(model)
+plot(model, iris, Petal.Width~Petal.Length,
+     slice = list(Sepal.Width=3,
+                  Sepal.Length=4))
+(pred<- predict(model, head(iris), decision.values=T))
+attr(pred, "decision.values")
+
+
+
+
+
+
+
 
