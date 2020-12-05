@@ -7,6 +7,16 @@ library(rpart.plot)
 library(zoo)
 library(tree)
 library(class)
+library(stats)
+library(ggplot2)
+library(corrplot)
+library(ggcorrplot)
+library(plotly)
+library(dplyr)
+library(heatmaply)
+library(caret)
+library(purrr)
+library(tidyr)
 
 ######FUNCTIONS - CONFUSION MATRIX AND MODELS######
 
@@ -146,21 +156,15 @@ for (i in 1:ncol(mort)){
 
 }
 
-mort %>%
-  keep(is.numeric) %>% 
-  gather() %>% 
-  ggplot(aes(value)) +
-  facet_wrap(~ key, scales = "free") +
-  geom_histogram()
 
-track<- track[complete.cases(strack),]
+
+track<- track[complete.cases(track),]
 track["Percent"]<- track[, "NAs"]/nrow(mort)
 track<- track[order(track$Percent, decreasing=TRUE),]
 track
 
 mort_rate<- mort[,'UNDER5_MORT']
 hist(mort_rate)
-#unimprov_water<- mort[,'UNIMPROVED_DRINK']
 print(mean(mort_rate))
 mort[, 'ABOVE25_MORT']<- 0
 mort[which(mort$UNDER5_MORT>= 25), 'ABOVE25_MORT'] <- 1
@@ -210,10 +214,19 @@ for (i in 1:ncol(train)){
   mort[is.na(mort[,i]),i] <- mean(mort[,i], na.rm=TRUE)
 }
 
+mort %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram()
+
 #####BASE MODEL #######
 
 base_list= models(train, mort)
 basestats <- base_list$Statistics
+
+write.csv(basestats, "c:/Users/phoen/Dropbox/MGMT 6962/Project Results/basestats.csv")
 
 base_tree<- base_list$DecTree
 rpart.plot(base_tree)
@@ -235,12 +248,12 @@ dev.off()
 par(mar= c(4,15,1,1),las=1, cex.axis = .5)
 
 rand_train<- base_list$RF
-vargini<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseGini"]
+vargini<- importance(rand_train, sort=FALSE)[,"MeanDecreaseGini"]
 dat<- vargini[order(vargini, decreasing=FALSE)]
 barplot(dat, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Gini", col=blues9)
 
 #reduce dataframe
-vargini1<- as.data.frame(varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseGini"])
+vargini1<- as.data.frame(importance(rand_train, sort=FALSE)[,"MeanDecreaseGini"])
 n<- as.data.frame(row.names(vargini1))
 vargini1<- cbind(n, vargini1)
 new_name<- c("Var", "MeanDecreaseGini")
@@ -250,11 +263,11 @@ dat_new<- vargini1[order(vargini1$MeanDecreaseGini, decreasing = T),]
 
 gini_vars<- c(dat_new$Var[1:5])
 #Mean Decrease Accuracy
-varacc<- varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseAccuracy"]
+varacc<- importance(rand_train, sort=FALSE)[,"MeanDecreaseAccuracy"]
 dat1<- varacc[order(varacc, decreasing=FALSE)]
 barplot(dat1, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Accuracy", col=blues9)
 
-varacc1<- as.data.frame(varImpPlot(rand_train, sort=FALSE)[,"MeanDecreaseAccuracy"])
+varacc1<- as.data.frame(importance(rand_train, sort=FALSE)[,"MeanDecreaseAccuracy"])
 n<- as.data.frame(row.names(varacc1))
 varacc1<- cbind(n, varacc1)
 new_name<- c("Var", "MeanDecreaseAccuracy")
@@ -268,7 +281,7 @@ acc_vars<- c(dat_new1$Var[1:5])
 dev.off()
 
 ######CLUSTERING######
-library(stats)
+
 
 train_u5<- cbind(train, u5_train)
 mort_u5<- cbind(mort, u5_mort)
@@ -285,7 +298,7 @@ mort[,'Cluster']<- factor(predkmeans_mort$cluster)
 
 clust_mult_centers<- as.data.frame(predkmeans$centers)
 cent_mort<- as.data.frame(predkmeans_mort$centers)
-library(ggplot2)
+
 
 ggplot() +
   geom_point(data = train, 
@@ -453,10 +466,8 @@ diffstats
 
 ###CORRELATION PLOTS####
 
-library(corrplot)
-library(dplyr)
-library(heatmaply)
-dev.off()
+
+#dev.off()
 corrplot(cor(train[, 1:(ncol(train)-2)]), order = "hclust")
 corr<- as.data.frame(cor(train[, 1:(ncol(train)-2)]))
 #heatmap(as.matrix(corr),margins = c(10,10))
