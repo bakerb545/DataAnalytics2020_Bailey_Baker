@@ -81,22 +81,6 @@ models<- function(train, mort){
   
   names(stats)<- name
   summstats<- rbind(summstats, stats)
-
-  #random forest
-  require(randomForest)
-  train$ABOVE25_MORT<- as.factor(train$ABOVE25_MORT)
-  
-  rand_train<- randomForest(train$ABOVE25_MORT ~., data=train, na.action = na.omit, importance=TRUE)
-  predTrain<- predict(rand_train, mort, type="class")
-  randtab<- table(predTrain, mort$ABOVE25_MORT)
-  
-  mat<- confmat(randtab)
-  
-  stats<- as.data.frame(matrix(c("Random Forest(ntree=500)",  mat[1], mat[2], 
-                                 mat[3], mat[4]), ncol=5))
-  
-  names(stats)<- name
-  summstats<- rbind(summstats, stats)
   
   knnstats<- as.data.frame(matrix(c(NA), ncol=5))
   name<- c("Model", "Recall", "Precision", "Accuracy", "Misclassification")
@@ -123,6 +107,24 @@ models<- function(train, mort){
   max_acc_knn<- max_acc_knn[complete.cases(max_acc_knn),]
   
   summstats<- rbind(summstats, max_acc_knn[1,])
+
+  #random forest
+  require(randomForest)
+  train$ABOVE25_MORT<- as.factor(train$ABOVE25_MORT)
+  
+  rand_train<- randomForest(train$ABOVE25_MORT ~., data=train, na.action = na.omit, importance=TRUE)
+  predTrain<- predict(rand_train, mort, type="class")
+  randtab<- table(predTrain, mort$ABOVE25_MORT)
+  
+  mat<- confmat(randtab)
+  
+  stats<- as.data.frame(matrix(c("Random Forest (ntree=500)",  mat[1], mat[2], 
+                                 mat[3], mat[4]), ncol=5))
+  
+  names(stats)<- name
+  summstats<- rbind(summstats, stats)
+  
+  
   
   lis<- list("Statistics" = summstats, "DecTree"= mo, "Pruned DecTree"= tree_prune, "Stopped DecTree"= mo_stop,
              "RF"= rand_train, "KNN stats"= max_acc_knn)
@@ -221,12 +223,20 @@ mort %>%
   facet_wrap(~ key, scales = "free") +
   geom_histogram()
 
+
+boxplot(ABOVE25_MORT~AT_LEAST_BASIC_SANIT, col=c("white", "lightgray"),
+        train)
+
+
 #####BASE MODEL #######
 
 base_list= models(train, mort)
 basestats <- base_list$Statistics
 
 write.csv(basestats, "c:/Users/phoen/Dropbox/MGMT 6962/Project Results/basestats.csv")
+
+results<- resamples(list(lda=fit.lda, cart=fit.cart, knn=fit.knn, svm=fit.svm, rf=fit.rf))
+summary(results)
 
 base_tree<- base_list$DecTree
 rpart.plot(base_tree)
@@ -245,7 +255,7 @@ basedecvarsstats = basedecvars_list$Statistics
 
 ####GINI AND ACCURACY DATAFRAME REDUCTION#####
 dev.off()
-par(mar= c(4,15,1,1),las=1, cex.axis = .5)
+par(mar= c(4,15,1,1),las=1, cex.axis = .7)
 
 rand_train<- base_list$RF
 vargini<- importance(rand_train, sort=FALSE)[,"MeanDecreaseGini"]
@@ -260,8 +270,10 @@ new_name<- c("Var", "MeanDecreaseGini")
 names(vargini1)<- new_name
 row.names(vargini1) = NULL
 dat_new<- vargini1[order(vargini1$MeanDecreaseGini, decreasing = T),]
+#dat_new<- dat_new[dat_new$MeanDecreaseGini>.5*dat_new$MeanDecreaseGini[1],]
 
-gini_vars<- c(dat_new$Var[1:5])
+gini_vars<- dat_new$Var[1:5]
+gini_vars<- gini_vars[!is.na(gini_vars)]
 #Mean Decrease Accuracy
 varacc<- importance(rand_train, sort=FALSE)[,"MeanDecreaseAccuracy"]
 dat1<- varacc[order(varacc, decreasing=FALSE)]
@@ -274,8 +286,10 @@ new_name<- c("Var", "MeanDecreaseAccuracy")
 names(varacc1)<- new_name
 row.names(varacc1) = NULL
 dat_new1<- varacc1[order(varacc1$MeanDecreaseAccuracy,decreasing = T),]
+#dat_new1<- dat_new1[dat_new1$MeanDecreaseAccuracy>.5*dat_new1$MeanDecreaseAccuracy[1],]
 
-acc_vars<- c(dat_new1$Var[1:5])
+acc_vars<- dat_new1$Var[1:5]
+acc_vars<- acc_vars[!is.na(acc_vars)]
 #need to run models on these new dfs
 
 dev.off()
@@ -415,6 +429,7 @@ gini_mort<- mort[, c(gini_vars, "ABOVE25_MORT")]
 gini_list= models(gini_train, gini_mort)
 ginistats <- gini_list$Statistics
 
+write.csv(ginistats, "c:/Users/phoen/Dropbox/MGMT 6962/Project Results/ginistats.csv")
 
 base_tree<- gini_list$DecTree
 rpart.plot(base_tree)
@@ -425,6 +440,13 @@ rpart.plot(pruned)
 stopped<- gini_list$`Stopped DecTree`
 rpart.plot(stopped)
 
+rand_train2<- gini_list$RF
+vargini2<- importance(rand_train2, sort=FALSE)[,"MeanDecreaseGini"]
+dat2<- vargini2[order(vargini2, decreasing=FALSE)]
+barplot(dat2, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Gini", col=blues9)
+
+
+
 ###MEAN ACCRUACY DECREASE DATAFRAME######
 
 
@@ -434,6 +456,8 @@ acc_mort<- mort[, c(acc_vars, "ABOVE25_MORT")]
 
 acc_list= models(acc_train, acc_mort)
 accstats <- acc_list$Statistics
+
+write.csv(accstats, "c:/Users/phoen/Dropbox/MGMT 6962/Project Results/accstats.csv")
 
 base_tree<- acc_list$DecTree
 rpart.plot(base_tree)
