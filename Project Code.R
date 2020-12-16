@@ -17,6 +17,7 @@ library(heatmaply)
 library(caret)
 library(purrr)
 library(tidyr)
+library(reshape2)
 
 ######FUNCTIONS - CONFUSION MATRIX AND MODELS######
 
@@ -53,7 +54,14 @@ models<- function(train, mort){
   summstats<- summstats[complete.cases(summstats),]
 
   #pruning
-  min_cp<- mo$cptable[which.min(mo$cptable[,"xerror"]), "CP"]
+  minval<- mo$cptable[which.min(mo$cptable[,"xerror"]),"xerror"]
+  vals<- mo$cptable[mo$cptable[,"xerror"]==minval,]
+  if (class(vals) != "numeric"){
+    min_cp<- min(vals[, "CP"])
+  }
+  else{
+    min_cp<- mo$cptable[which.min(mo$cptable[,"xerror"]), "CP"]
+  }
   tree_prune<- prune(mo, cp =min_cp)
   
   dcpredict<- predict(tree_prune, newdata = mort, type=c("class"))
@@ -166,15 +174,22 @@ track<- track[order(track$Percent, decreasing=TRUE),]
 track
 
 mort_rate<- mort[,'UNDER5_MORT']
-hist(mort_rate)
 print(mean(mort_rate))
 mort[, 'ABOVE25_MORT']<- 0
 mort[which(mort$UNDER5_MORT>= 25), 'ABOVE25_MORT'] <- 1
 
 summary(mort_rate)
-lis<- list("Indicator", "INF_MORT", "CHILD_MORT14", "UNDER5_DEATHS", "CHILD_DEATHS14", "POVERTY", "NO_WASTE_OVERWEIGHT_STUNT", "WASTE_OVERWEIGHT_STUNT")
+lis<- c("Indicator")
 mort<- mort[,-which(names(mort) %in% lis)]
-print(mean(mort$IMPROVED_DRINK_PREMISES, na.rm=T))
+
+change<- function(x){
+  train<- x
+  for (i in 1:ncol(train)){
+    train[, i]<- sub("-", NA, train[,i])
+    train[,i]<- as.numeric(train[,i])
+  }
+  return(train)
+}
 
 #import of training data
 t2016<- data.frame(read_xlsx("C:/Users/phoen/Downloads/GLOBAL_DATAFLOW_2011-2016.xlsx", sheet=1))
@@ -184,15 +199,43 @@ t2013<- data.frame(read_xlsx("C:/Users/phoen/Downloads/GLOBAL_DATAFLOW_2011-2016
 t2012<- data.frame(read_xlsx("C:/Users/phoen/Downloads/GLOBAL_DATAFLOW_2011-2016.xlsx", sheet=6))
 t2011<- data.frame(read_xlsx("C:/Users/phoen/Downloads/GLOBAL_DATAFLOW_2011-2016.xlsx", sheet=7))
 
-train<- rbind(t2016, rbind(t2015, rbind(t2014, rbind(t2013, rbind(t2012, t2011)))))
+t2016<- change(t2016)
+t2016<- t2016[is.na(t2016$UNDER5_MORT) == FALSE,]
+t2016<- t2016[, which(colMeans(!is.na(t2016)) > 0.5)]
+t2016<- na.aggregate(t2016)
 
-for (i in 1:ncol(train)){
-  train[, i]<- sub("-", NA, train[,i])
-  train[,i]<- as.numeric(train[,i])
-}
-train<- train[is.na(train$UNDER5_MORT) == FALSE,]
-train<- train[,-which(names(train) %in% lis)]
+t2015<- change(t2015)
+t2015<- t2015[is.na(t2015$UNDER5_MORT) == FALSE,]
+t2015<- t2015[, which(colMeans(!is.na(t2015)) > 0.5)]
+t2015<- na.aggregate(t2015)
+
+t2014<- change(t2014)
+t2014<- t2014[is.na(t2014$UNDER5_MORT) == FALSE,]
+t2014<- t2014[, which(colMeans(!is.na(t2014)) > 0.5)]
+t2014<- na.aggregate(t2014)
+
+t2013<- change(t2013)
+t2013<- t2013[is.na(t2013$UNDER5_MORT) == FALSE,]
+t2013<- t2013[, which(colMeans(!is.na(t2013)) > 0.5)]
+t2013<- na.aggregate(t2013)
+
+t2012<- change(t2012)
+t2012<- t2012[is.na(t2012$UNDER5_MORT) == FALSE,]
+t2012<- t2012[, which(colMeans(!is.na(t2012)) > 0.5)]
+t2012<- na.aggregate(t2012)
+
+t2011<- change(t2011)
+t2011<- t2011[is.na(t2011$UNDER5_MORT) == FALSE,]
+t2011<- t2011[, which(colMeans(!is.na(t2011)) > 0.5)]
+t2011<- na.aggregate(t2011)
+
+train<- rbind(t2016, rbind(t2015, rbind(t2014, rbind(t2013, rbind(t2012, t2011)))))
+names(train)
 train<- train[,which(names(train) %in% names(mort))]
+mort<- mort[,which(names(mort) %in% names(train))]
+
+mort[, 'ABOVE25_MORT']<- 0
+mort[which(mort$UNDER5_MORT>= 25), 'ABOVE25_MORT'] <- 1
 
 train[, 'ABOVE25_MORT']<- 0
 train[which(train$UNDER5_MORT>= 25), 'ABOVE25_MORT'] <- 1
@@ -216,27 +259,32 @@ for (i in 1:ncol(train)){
   mort[is.na(mort[,i]),i] <- mean(mort[,i], na.rm=TRUE)
 }
 
-mort %>%
-  keep(is.numeric) %>% 
-  gather() %>% 
-  ggplot(aes(value)) +
-  facet_wrap(~ key, scales = "free") +
-  geom_histogram()
+train_u5<- cbind(train, u5_train)
+mort_u5<- cbind(mort, u5_mort)
+
+total<- rbind(train_u5, mort_u5)
+
+####EDA#####
+
+hist(total$UNDER5_MORT, main="Histogram of Mortality Rate",
+     xlab = "Mortality Rate")
 
 
-boxplot(ABOVE25_MORT~AT_LEAST_BASIC_SANIT, col=c("white", "lightgray"),
-        train)
 
+total$ABOVE25_MORT<- as.factor(total$ABOVE25_MORT)
+
+boxplot(AT_LEAST_BASIC_SANIT~ABOVE25_MORT,total, col="pink")
+boxplot(AT_LEAST_BASIC_DRINK~ABOVE25_MORT,total, col="lightblue")
+
+ggplot(total, aes(x=ABOVE25_MORT, y=IMPROVED_DRINK_PREMISES))+
+  geom_violin(alpha=.2)
 
 #####BASE MODEL #######
-
+set.seed(2)
 base_list= models(train, mort)
 basestats <- base_list$Statistics
-
+basestats
 write.csv(basestats, "c:/Users/phoen/Dropbox/MGMT 6962/Project Results/basestats.csv")
-
-results<- resamples(list(lda=fit.lda, cart=fit.cart, knn=fit.knn, svm=fit.svm, rf=fit.rf))
-summary(results)
 
 base_tree<- base_list$DecTree
 rpart.plot(base_tree)
@@ -246,12 +294,6 @@ rpart.plot(pruned)
 
 stopped<- base_list$`Stopped DecTree`
 rpart.plot(stopped)
-
-basedecvars<- names(base_list$DecTree$variable.importance[1:5])
-basedec_train<- train[,c(basedecvars, "ABOVE25_MORT")]
-basedec_mort<- mort[,c(basedecvars, "ABOVE25_MORT")]
-basedecvars_list= models(basedec_train, basedec_mort)
-basedecvarsstats = basedecvars_list$Statistics
 
 ####GINI AND ACCURACY DATAFRAME REDUCTION#####
 dev.off()
@@ -295,52 +337,16 @@ acc_vars<- acc_vars[!is.na(acc_vars)]
 dev.off()
 
 ######CLUSTERING######
-
-
-train_u5<- cbind(train, u5_train)
-mort_u5<- cbind(mort, u5_mort)
-
-predkmeans<- kmeans(train[,-which(names(train) %in% drop2)], centers=2, iter.max = 1000)
-print(table(train$ABOVE25_MORT, predkmeans$cluster))
-train[,'Cluster']<- factor(predkmeans$cluster)
-
-#
-predkmeans_mort<- kmeans(mort[,-which(names(mort) %in% drop2)], centers=2, iter.max = 1000)
-print(table(mort$ABOVE25_MORT, predkmeans_mort$cluster))
-mort[,'Cluster']<- factor(predkmeans_mort$cluster)
-
+set.seed(2)
+predkmeans<- kmeans(total[,-which(names(total) %in% c("ABOVE25_MORT", "UNDER5_MORT"))], centers=2, iter.max = 1000)
+print(table(total$ABOVE25_MORT, predkmeans$cluster))
+total[,'Cluster']<- factor(predkmeans$cluster)
 
 clust_mult_centers<- as.data.frame(predkmeans$centers)
-cent_mort<- as.data.frame(predkmeans_mort$centers)
-
-
-ggplot() +
-  geom_point(data = train, 
-             mapping = aes(x =AT_LEAST_BASIC_SANIT, 
-                           y = IMPROVED_DRINK_PREMISES, 
-                           colour = Cluster))+
-  geom_point(data = clust_mult_centers, aes(x = AT_LEAST_BASIC_SANIT, 
-                           y = IMPROVED_DRINK_PREMISES,
-                  color = 'Center'),size = 5)
-
-
-#mort
-ggplot() +
-  geom_point(data = mort, 
-             mapping = aes(x =AT_LEAST_BASIC_SANIT, 
-                           y = IMPROVED_DRINK_PREMISES, 
-                           colour = Cluster))+
-  geom_point(data = cent_mort, aes(x = AT_LEAST_BASIC_SANIT, 
-                                            y = IMPROVED_DRINK_PREMISES,
-                                            color = 'Center'),size = 5)
-
-  
-#maybe use distance metrics to see how far the cluster centers for the 
-#attributes are apart
 
 clust_dist<- data.frame("Name" = NA, "Dist" = NA)
 for (i in 1:dim(clust_mult_centers)[2]){
-  dist1<- data.frame("Name" = names(clust_mult_centers)[i], 
+  dist1<- data.frame("Name" = names(clust_mult_centers)[i],
                       "Dist" = (clust_mult_centers[1, i] - clust_mult_centers[2, i])^2)
   #print(track1)
   clust_dist<- rbind(clust_dist, dist1)
@@ -350,72 +356,42 @@ clust_dist<- clust_dist[complete.cases(clust_dist),]
 clust_dist <- clust_dist[order(clust_dist$Dist, decreasing = TRUE), ]
 clust_dist
 
-
 ggplot() +
-  geom_point(data = train, 
-             mapping = aes(x =AT_LEAST_BASIC_SANIT, 
-                           y = IMPROVED_DRINK_PREMISES, 
-                           colour = ABOVE25_MORT))
-
-
-clust_dist_mort<- data.frame("Name" = NA, "Dist" = NA)
-for (i in 1:dim(cent_mort)[2]){
-  dist1<- data.frame("Name" = names(cent_mort)[i], 
-                     "Dist" = (cent_mort[1, i] - cent_mort[2, i])^2)
-  #print(track1)
-  clust_dist_mort<- rbind(clust_dist_mort, dist1)
-}
-
-clust_dist_mort<- clust_dist_mort[complete.cases(clust_dist_mort),]
-clust_dist_mort <- clust_dist_mort[order(clust_dist_mort$Dist, decreasing = TRUE), ]
-clust_dist_mort
+  geom_point(data = total,
+             mapping = aes(x =IMPROVED_DRINK_PREMISES,
+                           y = AT_LEAST_BASIC_SANIT,
+                           colour = Cluster))+
+  geom_point(data = clust_mult_centers, aes(x =IMPROVED_DRINK_PREMISES,
+                      y = AT_LEAST_BASIC_SANIT,
+                  color = 'Center'),size = 5)
 
 
 ggplot() +
-  geom_point(data =mort, 
-             mapping = aes(x =AT_LEAST_BASIC_SANIT, 
-                           y = IMPROVED_DRINK_PREMISES, 
+  geom_point(data = total,
+             mapping = aes(x =IMPROVED_DRINK_PREMISES,
+                           y = AT_LEAST_BASIC_SANIT,
                            colour = ABOVE25_MORT))
+total$ABOVE25_MORT<- as.factor(total$ABOVE25_MORT)
 
-train_u5[,'Cluster']<- factor(predkmeans$cluster)
-mort_u5[,'Cluster']<- factor(predkmeans_mort$cluster)
+ggplot(total, aes(x=Cluster, y=ABOVE25_MORT))+
+  geom_violin(alpha=.2)
 
+ggplot(total, aes(x=as.factor(ABOVE25_MORT), y=IMPROVED_DRINK_PREMISES))+
+  geom_violin(alpha=.2)+
+  scale_fill_brewer(palette = "Dark2")
 
-train_clust1 <- train_u5[train_u5$Cluster == 1,]
-train_clust2 <- train_u5[train_u5$Cluster == 2,]
+ggplot(total, aes(x=IMPROVED_DRINK_PREMISES, y=AT_LEAST_BASIC_SANIT, fill=ABOVE25_MORT))+
+  geom_violin(alpha=.2)
 
-mort_clust1 <- mort_u5[mort_u5$Cluster == 1,]
-mort_clust2 <- mort_u5[mort_u5$Cluster == 2,]
+total$Cluster<- as.factor(total$Cluster)
+clust1 <- total[total$Cluster == 1,]
+clust2 <- total[total$Cluster == 2,]
 
-hist(train_clust1$UNDER5_MORT)
-summary(train_clust1$UNDER5_MORT)
-hist(train_clust2$UNDER5_MORT)
-summary(train_clust2$UNDER5_MORT)
-hist(mort_clust1$UNDER5_MORT)
-summary(mort_clust1$UNDER5_MORT)
-hist(mort_clust2$UNDER5_MORT)
-summary(mort_clust2$UNDER5_MORT)
+boxplot(AT_LEAST_BASIC_SANIT~ABOVE25_MORT,total, col="pink" )
+boxplot(IMPROVED_DRINK_PREMISES~ABOVE25_MORT,total, col="lightblue" )
 
-hist(train_clust1$AT_LEAST_BASIC_SANIT)
-summary(train_clust1$AT_LEAST_BASIC_SANIT)
-hist(train_clust2$AT_LEAST_BASIC_SANIT)
-summary(train_clust2$AT_LEAST_BASIC_SANIT)
-
-hist(train_clust1$IMPROVED_DRINK_PREMISES)
-summary(train_clust1$IMPROVED_DRINK_PREMISES)
-hist(train_clust2$IMPROVED_DRINK_PREMISES)
-summary(train_clust2$IMPROVED_DRINK_PREMISES)
-
-hist(mort_clust1$AT_LEAST_BASIC_SANIT)
-summary(mort_clust1$AT_LEAST_BASIC_SANIT)
-hist(mort_clust2$AT_LEAST_BASIC_SANIT)
-summary(mort_clust2$AT_LEAST_BASIC_SANIT)
-
-hist(mort_clust1$IMPROVED_DRINK_PREMISES)
-summary(mort_clust1$IMPROVED_DRINK_PREMISES)
-hist(mort_clust2$IMPROVED_DRINK_PREMISES)
-summary(mort_clust2$IMPROVED_DRINK_PREMISES)
-
+hist(clust1$UNDER5_MORT)
+hist(clust2$UNDER5_MORT)
 
 
 ######GINI INCREASE DATAFRAME#####
@@ -423,6 +399,7 @@ summary(mort_clust2$IMPROVED_DRINK_PREMISES)
 ##gini_vars
 
 #gini df
+set.seed(2)
 gini_train<- train[,c(gini_vars, "ABOVE25_MORT")]
 gini_mort<- mort[, c(gini_vars, "ABOVE25_MORT")]
 
@@ -440,17 +417,11 @@ rpart.plot(pruned)
 stopped<- gini_list$`Stopped DecTree`
 rpart.plot(stopped)
 
-rand_train2<- gini_list$RF
-vargini2<- importance(rand_train2, sort=FALSE)[,"MeanDecreaseGini"]
-dat2<- vargini2[order(vargini2, decreasing=FALSE)]
-barplot(dat2, horiz=TRUE, main="Random Forest Importance", xlab="Mean Decrease Gini", col=blues9)
-
-
-
 ###MEAN ACCRUACY DECREASE DATAFRAME######
 
 
 ##acc_vars
+set.seed(2)
 acc_train<- train[,c(acc_vars, "ABOVE25_MORT")]
 acc_mort<- mort[, c(acc_vars, "ABOVE25_MORT")]
 
@@ -489,11 +460,15 @@ diffstats[,"Gini vs. AccDecrease"]<- ginistats$Accuracy - accstats$Accuracy
 diffstats
 
 ###CORRELATION PLOTS####
+##maybe put this in clustering
+ggplot(train, aes(x=ABOVE25_MORT, y=LIMITED_DRINK))+
+  geom_violin(alpha=.2)+
+  scale_fill_brewer(palette="Set2")
 
-
-#dev.off()
-corrplot(cor(train[, 1:(ncol(train)-2)]), order = "hclust")
-corr<- as.data.frame(cor(train[, 1:(ncol(train)-2)]))
+dev.off()
+#or -2 on ncol (from previously)
+corrplot(cor(train[, 1:(ncol(train))]), order = "hclust")
+corr<- as.data.frame(cor(train[, 1:(ncol(train))]))
 #heatmap(as.matrix(corr),margins = c(10,10))
 heatmaply_cor(corr)
 
@@ -515,6 +490,126 @@ heatmaply_cor(gini_corr)
 
 acc_corr<- cor(acc_train[, 1:(ncol(acc_train)-1)])
 heatmaply_cor(acc_corr)
+
+
+
+####Clustering after gini and accstats#####
+total1<- total
+total<-total1[, names(total1) %in% c(gini_vars, "ABOVE25_MORT", "UNDER5_MORT")]
+set.seed(2)
+predkmeans<- kmeans(total[,-which(names(total) %in% c("ABOVE25_MORT", "UNDER5_MORT"))], centers=2, iter.max = 1000)
+print(table(total$ABOVE25_MORT, predkmeans$cluster))
+total[,'Cluster']<- factor(predkmeans$cluster)
+
+clust_mult_centers<- as.data.frame(predkmeans$centers)
+
+clust_dist<- data.frame("Name" = NA, "Dist" = NA)
+for (i in 1:dim(clust_mult_centers)[2]){
+  dist1<- data.frame("Name" = names(clust_mult_centers)[i],
+                     "Dist" = (clust_mult_centers[1, i] - clust_mult_centers[2, i])^2)
+  #print(track1)
+  clust_dist<- rbind(clust_dist, dist1)
+}
+
+clust_dist<- clust_dist[complete.cases(clust_dist),]
+clust_dist <- clust_dist[order(clust_dist$Dist, decreasing = TRUE), ]
+clust_dist
+
+ggplot() +
+  geom_point(data = total,
+             mapping = aes(x =IMPROVED_DRINK_PREMISES,
+                           y = AT_LEAST_BASIC_SANIT,
+                           colour = Cluster))+
+  geom_point(data = clust_mult_centers, aes(x =IMPROVED_DRINK_PREMISES,
+                                            y = AT_LEAST_BASIC_SANIT,
+                                            color = 'Center'),size = 5)
+
+
+ggplot() +
+  geom_point(data = total,
+             mapping = aes(x =IMPROVED_DRINK_PREMISES,
+                           y = AT_LEAST_BASIC_SANIT,
+                           colour = ABOVE25_MORT))
+total$ABOVE25_MORT<- as.factor(total$ABOVE25_MORT)
+
+ggplot(total, aes(x=Cluster, y=ABOVE25_MORT))+
+  geom_violin(alpha=.2)
+
+ggplot(total, aes(x=as.factor(ABOVE25_MORT), y=IMPROVED_DRINK_PREMISES))+
+  geom_violin(alpha=.2)+
+  scale_fill_brewer(palette = "Dark2")
+
+ggplot(total, aes(x=IMPROVED_DRINK_PREMISES, y=AT_LEAST_BASIC_SANIT, fill=ABOVE25_MORT))+
+  geom_violin(alpha=.2)
+
+total$Cluster<- as.factor(total$Cluster)
+clust1 <- total[total$Cluster == 1,]
+clust2 <- total[total$Cluster == 2,]
+
+boxplot(AT_LEAST_BASIC_SANIT~ABOVE25_MORT,total, col="pink" )
+boxplot(IMPROVED_DRINK_PREMISES~ABOVE25_MORT,total, col="lightblue" )
+
+hist(clust1$UNDER5_MORT)
+hist(clust2$UNDER5_MORT)
+
+##accstats clustering
+
+total<-total1[, names(total1) %in% c(acc_vars, "ABOVE25_MORT", "UNDER5_MORT")]
+set.seed(2)
+predkmeans<- kmeans(total[,-which(names(total) %in% c("ABOVE25_MORT", "UNDER5_MORT"))], centers=2, iter.max = 1000)
+print(table(total$ABOVE25_MORT, predkmeans$cluster))
+total[,'Cluster']<- factor(predkmeans$cluster)
+
+clust_mult_centers<- as.data.frame(predkmeans$centers)
+
+clust_dist<- data.frame("Name" = NA, "Dist" = NA)
+for (i in 1:dim(clust_mult_centers)[2]){
+  dist1<- data.frame("Name" = names(clust_mult_centers)[i],
+                     "Dist" = (clust_mult_centers[1, i] - clust_mult_centers[2, i])^2)
+  #print(track1)
+  clust_dist<- rbind(clust_dist, dist1)
+}
+
+clust_dist<- clust_dist[complete.cases(clust_dist),]
+clust_dist <- clust_dist[order(clust_dist$Dist, decreasing = TRUE), ]
+clust_dist
+
+ggplot() +
+  geom_point(data = total,
+             mapping = aes(x =IMPROVED_DRINK_PREMISES,
+                           y = AT_LEAST_BASIC_SANIT,
+                           colour = Cluster))+
+  geom_point(data = clust_mult_centers, aes(x =IMPROVED_DRINK_PREMISES,
+                                            y = AT_LEAST_BASIC_SANIT,
+                                            color = 'Center'),size = 5)
+
+
+ggplot() +
+  geom_point(data = total,
+             mapping = aes(x =IMPROVED_DRINK_PREMISES,
+                           y = AT_LEAST_BASIC_SANIT,
+                           colour = ABOVE25_MORT))
+total$ABOVE25_MORT<- as.factor(total$ABOVE25_MORT)
+
+ggplot(total, aes(x=Cluster, y=ABOVE25_MORT))+
+  geom_violin(alpha=.2)
+
+ggplot(total, aes(x=as.factor(ABOVE25_MORT), y=IMPROVED_DRINK_PREMISES))+
+  geom_violin(alpha=.2)+
+  scale_fill_brewer(palette = "Dark2")
+
+ggplot(total, aes(x=IMPROVED_DRINK_PREMISES, y=AT_LEAST_BASIC_SANIT, fill=ABOVE25_MORT))+
+  geom_violin(alpha=.2)
+
+total$Cluster<- as.factor(total$Cluster)
+clust1 <- total[total$Cluster == 1,]
+clust2 <- total[total$Cluster == 2,]
+
+boxplot(AT_LEAST_BASIC_SANIT~ABOVE25_MORT,total, col="pink" )
+boxplot(IMPROVED_DRINK_PREMISES~ABOVE25_MORT,total, col="lightblue" )
+
+hist(clust1$UNDER5_MORT)
+hist(clust2$UNDER5_MORT)
 
 ######ONE VARIABLE EACH FROM GINI AND ACC DFS######
 
@@ -570,49 +665,58 @@ sim_mort<- mort[, c(sim_vars, "ABOVE25_MORT")]
 sim_list<- models(sim_train, sim_mort)
 sim_list$Statistics
 
+#####FINAL ANALYSIS GRAPHS#####
 
-#####STAT DIFFS - DO NOT USE!!!!!#####
+boxplot(AT_LEAST_BASIC_SANIT~ABOVE25_MORT, data=total,col="red")
+boxplot(IMPROVED_DRINK_PREMISES~ABOVE25_MORT, data=total,col="red")
 
-for (i in 2:ncol(basestats)){
-  basestats[,i]<- as.numeric(basestats[,i])
-  ginistats[,i]<- as.numeric(ginistats[,i])
-  accstats[,i]<- as.numeric(accstats[,i])
-  onestats[,i]<- as.numeric(onestats[,i])
-}
+total<- rbind(train, mort)
 
-diffstats[,"Base vs. One Var"]<- basestats$Accuracy - onestats$Accuracy
-diffstats[,"Gini vs. One Var"]<- ginistats$Accuracy - onestats$Accuracy
-diffstats[,"AccDecrease vs. One Var"]<- accstats$Accuracy - onestats$Accuracy
-diffstats
+all_vars<- union(gini_vars, acc_vars)
+# for (i in all_vars){
+#   print(i)
+#   boxplot(i~ABOVE25_MORT, data=total,col="red")
+# }
+# 
+# 
+# total[, c(all_vars, "ABOVE25_MORT")] %>%
+#   keep(is.numeric) %>% 
+#   gather() %>% 
+#   ggplot(aes(value)) +
+#   facet_wrap(~ key, scales = "free")+boxplot(total)
+
+total_imp_vars<- total[, c(all_vars, "ABOVE25_MORT")]
+tot_all <- melt(total_imp_vars, id = "ABOVE25_MORT")   
+
+dev.off()
+#par(mar= c(6,1,1,1),las=1, cex.axis = .5)
+ggplot(tot_all, aes(x = variable, y = value, color = ABOVE25_MORT)) +  # ggplot function
+  geom_boxplot() + theme(plot.margin = unit(c(1,1,1,1), "cm"),
+                         axis.text.x=element_text(angle=75))+
+  facet_wrap(~ ABOVE25_MORT, scales = "free")
+
+tot_all$ABOVE25_MORT<- as.factor((tot_all$ABOVE25_MORT))
+
+ggplot(tot_all, aes(x = variable, y = value, color = ABOVE25_MORT)) +  # ggplot function
+  geom_boxplot()+theme(axis.text.x=element_text(angle=50))
+
+ggplot(tot_all, aes(x = variable, y = value, color = ABOVE25_MORT)) +  # ggplot function
+    geom_boxplot()+
+  facet_wrap(~ variable, scales = "free")
+  
+# ggplot(tot_all, aes(x = variable, y = value, color = ABOVE25_MORT)) +  # ggplot function
+#     geom_boxplot()+ theme(plot.margin = unit(c(1,1,1,1), "cm"),
+#         axis.text.x=element_text(angle=75))+
+#   facet_wrap(~ ABOVE25_MORT, scales = "free")
+
+#+facet_wrap(~ABOVE25_MORT, scales = "free")
+
+#######OTHER#######
 
 
-#########OTHER MODELS - DO NOT USE!!!!!############
-
-
-
-
-#decision trees (regression)
-train_u5<- cbind(train, u5_train)
-mort_u5<- cbind(mort, u5_mort)
-
-drop2<- c("ABOVE25_MORT")
-train_u5<- train_u5[,-which(names(train_u5) %in% drop2)]
-mort_u5<- mort_u5[,-which(names(mort_u5) %in% drop2)]
-
-moreg<- rpart(train_u5$UNDER5_MORT ~., data=train_u5, method="anova")
-moreg
-rpart.plot(moreg)
-
-dcpredictreg<- predict(moreg, newdata = mort_u5)
-mse_reg<- sum( (dcpredictreg - mort_u5$UNDER5_MORT) ^ 2)
-mse_reg
-
-#pruning
-tree_prune<- prune(moreg, cp = .02)
-tree_prune
-rpart.plot(tree_prune)
-
-dcpredict_prune<- predict(tree_prune, newdata = mort_u5)
-mse_reg<- sum( (dcpredict_prune - mort_u5$UNDER5_MORT) ^ 2)
-mse_reg
-
+mort %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = "free") +
+  geom_histogram()
